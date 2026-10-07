@@ -36,6 +36,22 @@ CREATE TABLE IF NOT EXISTS t_gipr_case_flow (
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='专用标志使用核准办件流转单';
 
+-- 一关一记留痕：只有 CAS 挪关命中的动作才落一行；双击不成动、终态被拒不生痕。
+-- 动作次数以本表为准，与台账（t_gipr_case_flow 活单）是两个口径，统计各取各的源，不得混算。
+CREATE TABLE IF NOT EXISTS t_gipr_case_flow_log (
+  id bigint NOT NULL COMMENT '主键',
+  flow_id bigint NOT NULL COMMENT '流转单主键',
+  biz_no varchar(64) DEFAULT NULL COMMENT '办件件次（冗余）',
+  from_stage int DEFAULT NULL COMMENT '动前关次（建档为 NULL）',
+  to_stage int DEFAULT NULL COMMENT '动后关次',
+  action varchar(16) DEFAULT NULL COMMENT '动作 create 建档 / advance 推进 / rollback 撤回',
+  operator varchar(64) DEFAULT NULL COMMENT '操作人',
+  create_time datetime DEFAULT NULL COMMENT '落痕时间',
+  PRIMARY KEY (id),
+  KEY idx_flow_id (flow_id),
+  KEY idx_biz_no (biz_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='流转单一关一记留痕';
+
 CREATE TABLE IF NOT EXISTS t_gipr_cert_bill (
   id bigint NOT NULL COMMENT '主键',
   bill_no varchar(64) DEFAULT NULL COMMENT '专用标志使用授权签批单',
@@ -52,6 +68,21 @@ CREATE TABLE IF NOT EXISTS t_gipr_cert_bill (
   remark varchar(500) DEFAULT NULL COMMENT '备注',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='专用标志使用授权签批单';
+
+-- 签票留痕：同一关同一签批人同一动作只认一票（唯一键兜底幂等）；
+-- “两名须同判”靠本关两个不同签批人成立，同人点两回凑不齐。
+CREATE TABLE IF NOT EXISTS t_gipr_cert_sign (
+  id bigint NOT NULL COMMENT '主键',
+  bill_id bigint NOT NULL COMMENT '签批单主键',
+  node_no int NOT NULL COMMENT '签在哪一关 0县级初核/1市级核认/2省局核准',
+  approver varchar(64) NOT NULL COMMENT '签批人',
+  action varchar(16) NOT NULL COMMENT '动作 approve 赞成 / reject 否决',
+  `comment` varchar(500) DEFAULT NULL COMMENT '签批意见',
+  create_time datetime DEFAULT NULL COMMENT '落痕时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_bill_node_approver_action (bill_id, node_no, approver, action),
+  KEY idx_bill_node (bill_id, node_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='签批单签票留痕';
 
 CREATE TABLE IF NOT EXISTS t_gipr_check_item (
   id bigint NOT NULL COMMENT '主键',
